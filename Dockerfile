@@ -1,28 +1,21 @@
 FROM python:3.9-slim
 
-# Install system dependencies
+# Install minimal dependencies for Chrome
 RUN apt-get update && apt-get install -y \
     wget \
-    curl \
     gnupg \
-    unzip \
-    && rm -rf /var/lib/apt/lists/*
-
-# Install specific Chrome version 114 to match existing ChromeDriver
-RUN wget -q https://dl.google.com/linux/chrome/deb/pool/main/g/google-chrome-stable/google-chrome-stable_114.0.5735.90-1_amd64.deb \
+    && wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | apt-key add - \
+    && echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google-chrome.list \
     && apt-get update \
-    && apt-get install -y ./google-chrome-stable_114.0.5735.90-1_amd64.deb \
-    && rm google-chrome-stable_114.0.5735.90-1_amd64.deb
-
-# Install matching ChromeDriver 114
-RUN wget -O /tmp/chromedriver.zip https://chromedriver.storage.googleapis.com/114.0.5735.90/chromedriver_linux64.zip \
-    && unzip /tmp/chromedriver.zip -d /tmp/ \
-    && mv /tmp/chromedriver /usr/local/bin/ \
-    && rm -rf /tmp/chromedriver* \
-    && chmod +x /usr/local/bin/chromedriver
+    && apt-get install -y google-chrome-stable \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 COPY requirements.txt .
+COPY meetbot.py .
+RUN pip install -r requirements.txt
+EXPOSE 5000
+CMD ["python", "meetbot.py"]
 COPY meetbot.py .
 RUN pip install -r requirements.txt
 EXPOSE 5000
