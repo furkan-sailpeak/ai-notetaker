@@ -1,0 +1,310 @@
+{
+  "name": "AI Meeting Bot - Sailpeak",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "request-bot",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Bot Request",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [240, 300],
+      "webhookId": "sailpeak-meeting-bot"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.meeting_url }}",
+              "operation": "contains",
+              "value2": "meet.google.com"
+            },
+            {
+              "value1": "={{ $json.user_email }}",
+              "operation": "contains", 
+              "value2": "@sailpeak.com"
+            }
+          ]
+        }
+      },
+      "id": "validate-request",
+      "name": "Validate Request",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpQueryAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "key",
+              "value": "={{ $credentials.geminiApi.apiKey }}"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "contents",
+              "value": [
+                {
+                  "parts": [
+                    {
+                      "text": "Generate a unique session ID for a meeting bot request. Format: session_YYYYMMDD_HHMMSS_randomstring. Meeting URL: {{ $json.meeting_url }}. User: {{ $json.user_email }}. Also create a brief professional confirmation message (2-3 sentences) confirming the bot request. Return as JSON with fields: sessionId, confirmationMessage."
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "id": "gemini-session",
+      "name": "Generate Session with Gemini",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [680, 200]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract session ID and message from Gemini response\nconst geminiResponse = $input.first().json;\nconst responseText = geminiResponse.candidates[0].content.parts[0].text;\n\n// Try to parse JSON from Gemini response\nlet sessionData;\ntry {\n  sessionData = JSON.parse(responseText);\n} catch (e) {\n  // Fallback if Gemini doesn't return proper JSON\n  const sessionId = `session_${new Date().toISOString().slice(0,10).replace(/-/g,'')}_${new Date().toTimeString().slice(0,8).replace(/:/g,'')}_${Math.random().toString(36).substr(2, 6)}`;\n  sessionData = {\n    sessionId: sessionId,\n    confirmationMessage: \"Your meeting bot has been successfully requested and will join your meeting automatically.\"\n  };\n}\n\n// Get the original request data\nconst originalData = $('Bot Request').first().json;\n\nreturn {\n  user_email: originalData.user_email,\n  meeting_url: originalData.meeting_url,\n  session_id: sessionData.sessionId,\n  confirmation_message: sessionData.confirmationMessage,\n  timestamp: new Date().toISOString(),\n  status: 'REQUESTED'\n};"
+      },
+      "id": "process-response",
+      "name": "Process Gemini Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": "1M5DlopBD44wtvm8xbmbXd_2cm6i2vwPg9LYL-TzWmjmw",
+        "sheetName": "Sheet1",
+        "columnToMatchOn": "Session ID",
+        "valuesToSend": {
+          "specifyColumns": "defineBelow",
+          "columnsToSend": [
+            {
+              "column": "Timestamp",
+              "value": "={{ $json.timestamp }}"
+            },
+            {
+              "column": "User Email", 
+              "value": "={{ $json.user_email }}"
+            },
+            {
+              "column": "Meeting URL",
+              "value": "={{ $json.meeting_url }}"
+            },
+            {
+              "column": "Session ID",
+              "value": "={{ $json.session_id }}"
+            },
+            {
+              "column": "Status",
+              "value": "={{ $json.status }}"
+            }
+          ]
+        }
+      },
+      "id": "log-to-sheets",
+      "name": "Log to Sailpeak Sheet",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "fromEmail": "noreply@sailpeak.com",
+        "toEmail": "={{ $json.user_email }}",
+        "subject": "🤖 Sailpeak Meeting Bot Requested - {{ $json.session_id }}",
+        "emailType": "html",
+        "message": "<!DOCTYPE html>\n<html>\n<head>\n<style>\nbody { font-family: 'Segoe UI', Arial, sans-serif; margin: 0; padding: 0; background-color: #f5f5f5; }\n.container { max-width: 600px; margin: 0 auto; background-color: white; }\n.header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; text-align: center; }\n.content { padding: 30px; }\n.success-box { background: #d4edda; color: #155724; padding: 20px; border-radius: 8px; border-left: 5px solid #28a745; margin: 20px 0; }\n.details { background: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0; }\n.steps { background: #e3f2fd; padding: 20px; border-radius: 8px; margin: 20px 0; }\n.footer { background: #f8f9fa; padding: 20px; text-align: center; color: #666; }\n</style>\n</head>\n<body>\n<div class=\"container\">\n<div class=\"header\">\n<h1>🤖 Sailpeak AI Meeting Bot</h1>\n<p>Your intelligent meeting assistant is ready!</p>\n</div>\n<div class=\"content\">\n<div class=\"success-box\">\n<strong>✅ {{ $json.confirmation_message }}</strong>\n</div>\n\n<div class=\"details\">\n<h3>📋 Request Details</h3>\n<ul style=\"list-style: none; padding: 0;\">\n<li><strong>🆔 Session ID:</strong> {{ $json.session_id }}</li>\n<li><strong>👤 Requested by:</strong> {{ $json.user_email }}</li>\n<li><strong>🔗 Meeting:</strong> {{ $json.meeting_url }}</li>\n<li><strong>⏰ Requested:</strong> {{ new Date($json.timestamp).toLocaleString() }}</li>\n</ul>\n</div>\n\n<div class=\"steps\">\n<h3>🤖 What happens next:</h3>\n<ol>\n<li><strong>Bot joins automatically</strong> - No action needed from you</li>\n<li><strong>Real-time transcription</strong> - Captures everything said</li>\n<li><strong>AI enhancement</strong> - Powered by Google Gemini for accuracy</li>\n<li><strong>Smart summary</strong> - Key points and action items highlighted</li>\n<li><strong>Auto-save to Drive</strong> - Transcript delivered to your Google Drive</li>\n</ol>\n</div>\n\n<div style=\"text-align: center; margin: 30px 0;\">\n<p><em>\"Making every meeting productive with AI-powered transcription\"</em></p>\n</div>\n\n<p>Questions or issues? Simply reply to this email and our team will help!</p>\n\n<p>Best regards,<br>\n<strong>Sailpeak AI Team</strong><br>\n🚀 Enhancing productivity, one meeting at a time</p>\n</div>\n<div class=\"footer\">\n<p>Sailpeak Technologies | AI Meeting Solutions</p>\n<p>Session ID: {{ $json.session_id }} | Status: Active</p>\n</div>\n</div>\n</body>\n</html>"
+      },
+      "id": "send-email",
+      "name": "Send Sailpeak Email",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2,
+      "position": [900, 400]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpQueryAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "key",
+              "value": "={{ $credentials.geminiApi.apiKey }}"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "contents",
+              "value": [
+                {
+                  "parts": [
+                    {
+                      "text": "Create a brief Slack notification message for a new meeting bot request. Keep it professional and concise. User: {{ $json.user_email }}, Session: {{ $json.session_id }}, Meeting: {{ $json.meeting_url }}. Include relevant emojis."
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "id": "gemini-slack",
+      "name": "Generate Slack Message",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [900, 500],
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{\n  \"success\": true,\n  \"session_id\": \"{{ $json.session_id }}\",\n  \"message\": \"{{ $json.confirmation_message }}\",\n  \"meeting_url\": \"{{ $json.meeting_url }}\",\n  \"user_email\": \"{{ $json.user_email }}\",\n  \"timestamp\": \"{{ $json.timestamp }}\",\n  \"sailpeak_status\": \"Bot request processed successfully! Check your email for confirmation.\"\n}"
+      },
+      "id": "success-response",
+      "name": "Success Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1120, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{\n  \"success\": false,\n  \"error\": \"Invalid request. Please provide a valid Google Meet URL and Sailpeak email address (@sailpeak.com).\",\n  \"received_data\": {\n    \"meeting_url\": \"{{ $json.meeting_url || 'not provided' }}\",\n    \"user_email\": \"{{ $json.user_email || 'not provided' }}\"\n  }\n}",
+        "responseCode": 400
+      },
+      "id": "error-response",
+      "name": "Error Response", 
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [680, 600]
+    }
+  ],
+  "connections": {
+    "Bot Request": {
+      "main": [
+        [
+          {
+            "node": "Validate Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Request": {
+      "main": [
+        [
+          {
+            "node": "Generate Session with Gemini",
+            "type": "main", 
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Error Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Session with Gemini": {
+      "main": [
+        [
+          {
+            "node": "Process Gemini Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process Gemini Response": {
+      "main": [
+        [
+          {
+            "node": "Log to Sailpeak Sheet",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Send Sailpeak Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log to Sailpeak Sheet": {
+      "main": [
+        [
+          {
+            "node": "Success Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "timezone": "America/New_York"
+  },
+  "createdAt": "2025-01-25T10:00:00.000Z",
+  "updatedAt": "2025-01-25T10:00:00.000Z",
+  "id": "sailpeak-ai-meeting-bot",
+  "tags": [
+    {
+      "id": "sailpeak",
+      "name": "Sailpeak"
+    },
+    {
+      "id": "meeting-bot", 
+      "name": "Meeting Bot"
+    }
+  ]
+}
