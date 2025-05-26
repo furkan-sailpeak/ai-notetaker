@@ -1,9 +1,9 @@
 from flask import Flask, request, jsonify
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
 import time
-import threading
 
 app = Flask(__name__)
 
@@ -17,6 +17,9 @@ class MeetingBot:
         options.add_argument("--disable-dev-shm-usage")
         options.add_argument("--use-fake-ui-for-media-stream")
         options.add_argument("--use-fake-device-for-media-stream")
+        options.add_argument("--headless")
+        
+        # Let Selenium manage ChromeDriver automatically
         self.driver = webdriver.Chrome(options=options)
         
     def join_meeting(self, meeting_url):
@@ -24,13 +27,9 @@ class MeetingBot:
             self.setup_chrome()
             self.driver.get(meeting_url)
             time.sleep(5)
-            
-            # Click join button
-            join_button = self.driver.find_element(By.CSS_SELECTOR, "[data-mdc-dialog-action='join']")
-            join_button.click()
-            
             return True
         except Exception as e:
+            print(f"Error: {e}")
             return False
 
 @app.route('/join', methods=['POST'])
